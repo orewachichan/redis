@@ -547,6 +547,37 @@ void hincrbyCommand(redisClient *c) {
     server.dirty++;
 }
 
+void hincrCommand(redisClient *c) {
+    long long value;
+    robj *o, *current, *new;
+
+    if ((o = hashTypeLookupWriteOrCreate(c,c->argv[1])) == NULL) return;
+    if ((current = hashTypeGetObject(o,c->argv[2])) != NULL) {
+        if (getLongLongFromObjectOrReply(c,current,&value,
+            "hash value is not an integer") != REDIS_OK) {
+            decrRefCount(current);
+            return;
+        }
+        decrRefCount(current);
+    } else {
+        value = 0;
+    }
+
+    value += 1;
+    if (value > LLONG_MAX) {
+        addReplyError(c,"increment or decrement would overflow");
+        return;
+    }
+    new = createStringObjectFromLongLong(value);
+    hashTypeTryObjectEncoding(o,&c->argv[2],NULL);
+    hashTypeSet(o,c->argv[2],new);
+    decrRefCount(new);
+    addReplyLongLong(c,value);
+    signalModifiedKey(c->db,c->argv[1]);
+    notifyKeyspaceEvent(REDIS_NOTIFY_HASH,"hincr",c->argv[1],c->db->id);
+    server.dirty++;
+}
+
 void hmincrbyCommand(redisClient *c) {
     uint i, succ = 0;
     long long value, incr, oldvalue;
@@ -590,6 +621,42 @@ void hmincrbyCommand(redisClient *c) {
     addReplyLongLong(c,succ);
     signalModifiedKey(c->db,c->argv[1]);
     notifyKeyspaceEvent(REDIS_NOTIFY_HASH,"hmincrby",c->argv[1],c->db->id);
+    server.dirty++;
+}
+
+void hmincrCommand(redisClient *c) {
+    uint i, succ = 0;
+    long long value;
+    robj *o, *current, *new;
+    
+    if ((o = hashTypeLookupWriteOrCreate(c,c->argv[1])) == NULL) return;
+
+    for (i = 2; i < c->argc; i += 1) {
+        if ((current = hashTypeGetObject(o,c->argv[i])) != NULL) {
+            if (getLongLongFromObjectOrReply(c,current,&value,
+                "hash value is not an integer") != REDIS_OK) {
+                decrRefCount(current);
+                continue;
+            }
+            decrRefCount(current);
+        } else {
+            value = 0;
+        }
+        value += 1;
+        if (value > LLONG_MAX) {
+            addReplyError(c,"increment or decrement would overflow");
+            continue;
+        }
+        new = createStringObjectFromLongLong(value);
+        hashTypeTryObjectEncoding(o,&c->argv[i],NULL);
+        hashTypeSet(o,c->argv[i],new);
+        decrRefCount(new);
+        succ += 1;
+    }
+
+    addReplyLongLong(c,succ);
+    signalModifiedKey(c->db,c->argv[1]);
+    notifyKeyspaceEvent(REDIS_NOTIFY_HASH,"hmincr",c->argv[1],c->db->id);
     server.dirty++;
 }
 
