@@ -547,6 +547,52 @@ void hincrbyCommand(redisClient *c) {
     server.dirty++;
 }
 
+void hmincrbyCommand(redisClient *c) {
+    uint i, succ = 0;
+    long long value, incr, oldvalue;
+    robj *o, *current, *new;
+
+    if ((c->argc % 2) == 1) {
+        addReplyError(c,"wrong number of arguments for HMINCRBY");
+        return;
+    }
+
+    if (getLongLongFromObjectOrReply(c,c->argv[c->argc-1],&incr,NULL) != REDIS_OK) return;
+    if ((o = hashTypeLookupWriteOrCreate(c,c->argv[1])) == NULL) return;
+
+    for (i = 2; i < c->argc; i += 2) {
+        if (getLongLongFromObjectOrReply(c,c->argv[i+1],&incr,NULL) != REDIS_OK) continue;
+        if ((current = hashTypeGetObject(o,c->argv[i])) != NULL) {
+            if (getLongLongFromObjectOrReply(c,current,&value,
+                "hash value is not an integer") != REDIS_OK) {
+                decrRefCount(current);
+                continue;
+            }
+            decrRefCount(current);
+        } else {
+            value = 0;
+        }
+
+        oldvalue = value;
+        if ((incr < 0 && oldvalue < 0 && incr < (LLONG_MIN-oldvalue)) ||
+            (incr > 0 && oldvalue > 0 && incr > (LLONG_MAX-oldvalue))) {
+            addReplyError(c,"increment or decrement would overflow");
+            continue;
+        }
+        value += incr;
+        new = createStringObjectFromLongLong(value);
+        hashTypeTryObjectEncoding(o,&c->argv[i],NULL);
+        hashTypeSet(o,c->argv[i],new);
+        decrRefCount(new);
+        succ += 1;
+    }
+
+    addReplyLongLong(c,succ);
+    signalModifiedKey(c->db,c->argv[1]);
+    notifyKeyspaceEvent(REDIS_NOTIFY_HASH,"hmincrby",c->argv[1],c->db->id);
+    server.dirty++;
+}
+
 void hincrbyfloatCommand(redisClient *c) {
     double long value, incr;
     robj *o, *current, *new, *aux;

@@ -1486,6 +1486,7 @@ void hgetallCommand(redisClient *c);
 void hexistsCommand(redisClient *c);
 void configCommand(redisClient *c);
 void hincrbyCommand(redisClient *c);
+void hmincrbyCommand(redisClient *c);
 void hincrbyfloatCommand(redisClient *c);
 void subscribeCommand(redisClient *c);
 void unsubscribeCommand(redisClient *c);
