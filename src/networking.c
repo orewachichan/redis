@@ -847,7 +847,7 @@ void resetClient(redisClient *c) {
 int processInlineBuffer(redisClient *c) {
     char *newline = strstr(c->querybuf,"\r\n");
     int argc, j;
-    sds *argv;
+    sds *argv, aux;
     size_t querylen;
 
     /* Nothing to do without a \r\n */
@@ -861,10 +861,12 @@ int processInlineBuffer(redisClient *c) {
 
     /* Split the input buffer up to the \r\n */
     querylen = newline-(c->querybuf);
-    argv = sdssplitlen(c->querybuf,querylen," ",1,&argc);
+    aux = sdsnewlen(c->querybuf,querylen);
+    argv = sdssplitargs(aux,&argc);
+    sdsfree(aux);
 
     /* Leave data after the first line of the query in the buffer */
-    c->querybuf = sdsrange(c->querybuf,querylen+2,-1);
+    sdsrange(c->querybuf,querylen+2,-1);
 
     /* Setup argv array on client structure */
     if (c->argv) zfree(c->argv);
@@ -893,7 +895,7 @@ static void setProtocolError(redisClient *c, int pos) {
         sdsfree(client);
     }
     c->flags |= REDIS_CLOSE_AFTER_REPLY;
-    c->querybuf = sdsrange(c->querybuf,pos,-1);
+    sdsrange(c->querybuf,pos,-1);
 }
 
 int processMultibulkBuffer(redisClient *c) {
@@ -931,7 +933,7 @@ int processMultibulkBuffer(redisClient *c) {
 
         pos = (newline-c->querybuf)+2;
         if (ll <= 0) {
-            c->querybuf = sdsrange(c->querybuf,pos,-1);
+            sdsrange(c->querybuf,pos,-1);
             return REDIS_OK;
         }
 
@@ -980,7 +982,7 @@ int processMultibulkBuffer(redisClient *c) {
                  * try to make it likely that it will start at c->querybuf
                  * boundary so that we can optimized object creation
                  * avoiding a large copy of data. */
-                c->querybuf = sdsrange(c->querybuf,pos,-1);
+                sdsrange(c->querybuf,pos,-1);
                 pos = 0;
                 /* Hint the sds library about the amount of bytes this string is
                  * going to contain. */
@@ -1019,7 +1021,7 @@ int processMultibulkBuffer(redisClient *c) {
     }
 
     /* Trim to pos */
-    if (pos) c->querybuf = sdsrange(c->querybuf,pos,-1);
+    if (pos) sdsrange(c->querybuf,pos,-1);
 
     /* We're done when c->multibulk == 0 */
     if (c->multibulklen == 0) return REDIS_OK;
